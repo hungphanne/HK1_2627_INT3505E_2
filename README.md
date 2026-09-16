@@ -8,3 +8,5 @@ Bai 1: Output
 Bai 2: Output
 <img width="2560" height="1528" alt="image" src="https://github.com/user-attachments/assets/1c6ec4d2-92d8-43dc-b62b-148c28ceb30e" />
 
+Bai 3: Output
+<img width="2560" height="1528" alt="image" src="https://github.com/user-attachments/assets/be981bb2-927e-495b-942f-b46b096b96c7" />
