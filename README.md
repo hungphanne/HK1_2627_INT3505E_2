@@ -10,3 +10,10 @@ Bai 2: Output
 
 Bai 3: Output
 <img width="2560" height="1528" alt="image" src="https://github.com/user-attachments/assets/be981bb2-927e-495b-942f-b46b096b96c7" />
+
+Bai 4: Output
+<img width="2560" height="1528" alt="image" src="https://github.com/user-attachments/assets/0cf8c39c-e2ac-4541-a72a-fa2814dd1a1a" />
+<img width="2560" height="1528" alt="image" src="https://github.com/user-attachments/assets/e33476d6-3619-4ba3-9276-231fba4248f6" />
+
+Bai 5: Output
+<img width="2560" height="1528" alt="image" src="https://github.com/user-attachments/assets/4958e15d-a276-467b-9860-5a0d9719c074" />
