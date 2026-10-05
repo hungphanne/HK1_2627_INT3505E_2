@@ -92,7 +92,7 @@ RESOURCES = {
 }
 
 # Kiểm thử 1: Request tới /resources/{id}
-@app.route("/resources/", methods=["GET"])
+@app.route("/resources/<int:resource_id>", methods=["GET"])
 def get_resource(resource_id):
     item = RESOURCES.get(resource_id)
     if not item:
