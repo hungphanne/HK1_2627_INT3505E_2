@@ -1,0 +1,532 @@
+openapi: 3.1.0
+jsonSchemaDialect: https://spec.openapis.org/oas/3.1/dialect/base
+info:
+  title: Book Management API
+  version: 1.0.0
+  description: |
+    API quản lý sách: tạo, xem, cập nhật, xoá sách và tìm kiếm theo tiêu đề, tác giả, thể loại.
+
+    - Mọi phản hồi dùng định dạng JSON.
+    - Các thao tác ghi (POST, PUT, PATCH, DELETE) yêu cầu Bearer token.
+    - Danh sách được phân trang bằng `page` và `limit`.
+  contact:
+    name: Nguyễn Phan Hùng
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Máy chủ phát triển cục bộ
+tags:
+  - name: Books
+    description: Thao tác với sách
+  - name: Authors
+    description: Thao tác với tác giả
+
+paths:
+  /books:
+    get:
+      tags: [Books]
+      summary: Lấy danh sách sách
+      description: Trả về danh sách sách có phân trang, hỗ trợ tìm kiếm và lọc.
+      operationId: listBooks
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: q
+          in: query
+          description: Từ khoá tìm trong tiêu đề hoặc tên tác giả
+          schema:
+            type: string
+          example: dế mèn
+        - name: genre
+          in: query
+          description: Lọc theo thể loại
+          schema:
+            $ref: '#/components/schemas/Genre'
+        - name: authorId
+          in: query
+          description: Lọc theo mã tác giả
+          schema:
+            type: integer
+            format: int64
+        - name: sort
+          in: query
+          description: Trường sắp xếp; thêm dấu `-` phía trước để sắp xếp giảm dần
+          schema:
+            type: string
+            enum: [title, -title, publishedYear, -publishedYear, price, -price]
+            default: title
+      responses:
+        '200':
+          description: Danh sách sách
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    post:
+      tags: [Books]
+      summary: Thêm sách mới
+      operationId: createBook
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookInput'
+            example:
+              title: Dế Mèn phiêu lưu ký
+              isbn: '9786042088066'
+              authorId: 1
+              genre: CHILDREN
+              publishedYear: 1941
+              pages: 144
+              price: 45000
+              stock: 20
+      responses:
+        '201':
+          description: Đã tạo sách
+          headers:
+            Location:
+              description: Đường dẫn tới sách vừa tạo
+              schema:
+                type: string
+                examples: [/api/v1/books/42]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: ISBN đã tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: DUPLICATE_ISBN
+                message: Sách có ISBN 9786042088066 đã tồn tại
+
+  /books/{bookId}:
+    parameters:
+      - $ref: '#/components/parameters/BookId'
+    get:
+      tags: [Books]
+      summary: Xem chi tiết một cuốn sách
+      operationId: getBook
+      responses:
+        '200':
+          description: Thông tin sách
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Books]
+      summary: Thay thế toàn bộ thông tin sách
+      operationId: replaceBook
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookInput'
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Books]
+      summary: Cập nhật một phần thông tin sách
+      description: Chỉ gửi các trường cần thay đổi, ví dụ cập nhật số lượng tồn kho.
+      operationId: updateBook
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookPatch'
+            example:
+              stock: 15
+              price: 49000
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Books]
+      summary: Xoá sách
+      operationId: deleteBook
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Đã xoá
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /authors:
+    get:
+      tags: [Authors]
+      summary: Lấy danh sách tác giả
+      operationId: listAuthors
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Danh sách tác giả
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorPage'
+    post:
+      tags: [Authors]
+      summary: Thêm tác giả
+      operationId: createAuthor
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorInput'
+      responses:
+        '201':
+          description: Đã tạo tác giả
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Author'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /authors/{authorId}/books:
+    get:
+      tags: [Authors]
+      summary: Lấy sách của một tác giả
+      operationId: listBooksByAuthor
+      parameters:
+        - name: authorId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Danh sách sách của tác giả
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookPage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    BookId:
+      name: bookId
+      in: path
+      required: true
+      description: Mã sách
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 42
+    Page:
+      name: page
+      in: query
+      description: Số trang, bắt đầu từ 1
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limit:
+      name: limit
+      in: query
+      description: Số bản ghi mỗi trang
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  schemas:
+    Genre:
+      type: string
+      description: Thể loại sách
+      enum: [FICTION, NON_FICTION, SCIENCE, HISTORY, CHILDREN, TECHNOLOGY, POETRY]
+
+    BookInput:
+      type: object
+      required: [title, isbn, authorId, genre]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+          examples: [Dế Mèn phiêu lưu ký]
+        isbn:
+          type: string
+          description: ISBN-13, chỉ gồm chữ số
+          pattern: '^\d{13}$'
+          examples: ['9786042088066']
+        authorId:
+          type: integer
+          format: int64
+          examples: [1]
+        genre:
+          $ref: '#/components/schemas/Genre'
+        publishedYear:
+          type: [integer, 'null']
+          description: Năm xuất bản; null nếu chưa rõ
+          minimum: 1450
+          maximum: 2100
+          examples: [1941]
+        pages:
+          type: integer
+          minimum: 1
+          examples: [144]
+        price:
+          type: number
+          format: double
+          minimum: 0
+          description: Giá bán (VND)
+          examples: [45000]
+        stock:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Số lượng tồn kho
+          examples: [20]
+        description:
+          type: [string, 'null']
+          maxLength: 2000
+          examples: [Truyện đồng thoại kể về chuyến phiêu lưu của chú Dế Mèn.]
+
+    BookPatch:
+      type: object
+      description: Mọi trường đều tuỳ chọn; ít nhất phải có một trường.
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        genre:
+          $ref: '#/components/schemas/Genre'
+        publishedYear:
+          type: integer
+        pages:
+          type: integer
+          minimum: 1
+        price:
+          type: number
+          minimum: 0
+        stock:
+          type: integer
+          minimum: 0
+        description:
+          type: string
+          maxLength: 2000
+
+    Book:
+      allOf:
+        - type: object
+          required: [id, createdAt, updatedAt]
+          properties:
+            id:
+              type: integer
+              format: int64
+              readOnly: true
+              examples: [42]
+        - $ref: '#/components/schemas/BookInput'
+        - type: object
+          properties:
+            author:
+              $ref: '#/components/schemas/AuthorSummary'
+            createdAt:
+              type: string
+              format: date-time
+              readOnly: true
+              examples: ['2026-10-14T07:00:00Z']
+            updatedAt:
+              type: string
+              format: date-time
+              readOnly: true
+              examples: ['2026-10-14T07:00:00Z']
+
+    AuthorInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+          examples: [Tô Hoài]
+        birthYear:
+          type: integer
+          examples: [1920]
+        nationality:
+          type: string
+          examples: [Việt Nam]
+        bio:
+          type: string
+          maxLength: 2000
+
+    Author:
+      allOf:
+        - type: object
+          required: [id]
+          properties:
+            id:
+              type: integer
+              format: int64
+              readOnly: true
+              examples: [1]
+        - $ref: '#/components/schemas/AuthorInput'
+
+    AuthorSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          examples: [1]
+        name:
+          type: string
+          examples: [Tô Hoài]
+
+    PageMeta:
+      type: object
+      required: [page, limit, totalItems, totalPages]
+      properties:
+        page:
+          type: integer
+          examples: [1]
+        limit:
+          type: integer
+          examples: [20]
+        totalItems:
+          type: integer
+          examples: [125]
+        totalPages:
+          type: integer
+          examples: [7]
+
+    BookPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Book'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+
+    AuthorPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Author'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          examples: [VALIDATION_ERROR]
+        message:
+          type: string
+          examples: [Dữ liệu không hợp lệ]
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                examples: [isbn]
+              issue:
+                type: string
+                examples: [ISBN phải gồm đúng 13 chữ số]
+
+  responses:
+    BadRequest:
+      description: Dữ liệu đầu vào không hợp lệ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Thiếu hoặc sai token xác thực
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: UNAUTHORIZED
+            message: Cần đăng nhập để thực hiện thao tác này
+    NotFound:
+      description: Không tìm thấy tài nguyên
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: NOT_FOUND
+            message: Không tìm thấy sách có id 42
