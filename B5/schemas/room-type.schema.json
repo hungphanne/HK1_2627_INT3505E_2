@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hotel-api.example/schemas/room-type.schema.json",
+  "title": "RoomType",
+  "description": "Hạng phòng của một khách sạn (GET /hotels/{hotelId}/room-types/{roomTypeId}). Sub-resource: không tồn tại nếu Hotel bị xoá.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "hotelId", "name", "capacity", "beds", "baseRate", "totalRooms", "status"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^rmt_[a-z0-9]{6,24}$", "readOnly": true},
+    "hotelId": {"type": "string", "pattern": "^hot_[a-z0-9]{6,24}$", "readOnly": true},
+    "name": {"type": "string", "minLength": 1, "maxLength": 100},
+    "description": {"type": "string", "maxLength": 2000},
+    "capacity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adults"],
+      "properties": {
+        "adults": {"type": "integer", "minimum": 1, "maximum": 10},
+        "children": {"type": "integer", "minimum": 0, "maximum": 6, "default": 0}
+      }
+    },
+    "beds": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "count"],
+        "properties": {
+          "type": {"enum": ["single", "double", "queen", "king", "bunk", "sofa"]},
+          "count": {"type": "integer", "minimum": 1, "maximum": 4}
+        }
+      }
+    },
+    "areaSqm": {"type": "number", "exclusiveMinimum": 0, "maximum": 1000},
+    "baseRate": {"$ref": "#/$defs/money", "description": "Giá niêm yết / đêm, chưa gồm thuế phí."},
+    "totalRooms": {"type": "integer", "minimum": 0, "description": "Số phòng vật lý thuộc hạng này."},
+    "amenityCodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z_]+$"}
+    },
+    "cancellationPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["free", "partial", "non_refundable"]},
+        "freeUntilHoursBefore": {"type": "integer", "minimum": 0, "maximum": 720},
+        "penaltyPercent": {"type": "integer", "minimum": 0, "maximum": 100}
+      },
+      "allOf": [
+        {"if": {"properties": {"type": {"const": "free"}}},
+         "then": {"required": ["freeUntilHoursBefore"]}},
+        {"if": {"properties": {"type": {"const": "partial"}}},
+         "then": {"required": ["freeUntilHoursBefore", "penaltyPercent"]}}
+      ]
+    },
+    "status": {"enum": ["active", "inactive"]},
+    "createdAt": {"type": "string", "format": "date-time", "readOnly": true}
+  },
+  "$defs": {
+    "money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amount", "currency"],
+      "properties": {
+        "amount": {"type": "integer", "minimum": 0},
+        "currency": {"enum": ["VND", "USD"]}
+      }
+    }
+  }
+}

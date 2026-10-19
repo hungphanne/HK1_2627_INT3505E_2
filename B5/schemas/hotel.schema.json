@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hotel-api.example/schemas/hotel.schema.json",
+  "title": "Hotel",
+  "description": "Representation của resource Hotel (GET /hotels/{hotelId}). Field readOnly do server sinh, không nhận khi POST/PATCH.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "slug", "starRating", "address", "checkInTime", "checkOutTime", "status"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^hot_[a-z0-9]{6,24}$", "readOnly": true},
+    "name": {"type": "string", "minLength": 1, "maxLength": 150},
+    "slug": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 80},
+    "description": {"type": "string", "maxLength": 5000},
+    "starRating": {"type": "integer", "minimum": 1, "maximum": 5},
+    "address": {"$ref": "#/$defs/address"},
+    "contact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "phone": {"type": "string", "pattern": "^\\+?[0-9 ]{8,20}$"},
+        "email": {"type": "string", "format": "email"}
+      }
+    },
+    "checkInTime": {"$ref": "#/$defs/localTime"},
+    "checkOutTime": {"$ref": "#/$defs/localTime"},
+    "amenities": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 50,
+      "items": {"$ref": "#/$defs/amenity"}
+    },
+    "photos": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {"type": "string", "format": "uri"}
+    },
+    "priceFrom": {
+      "description": "Computed: giá thấp nhất/đêm trong các room type đang mở bán.",
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/money"}],
+      "readOnly": true
+    },
+    "rating": {
+      "description": "Computed từ reviews.",
+      "type": "object",
+      "readOnly": true,
+      "required": ["average", "count"],
+      "properties": {
+        "average": {"type": ["number", "null"], "minimum": 1, "maximum": 5},
+        "count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "status": {"enum": ["draft", "active", "suspended"]},
+    "createdAt": {"type": "string", "format": "date-time", "readOnly": true},
+    "updatedAt": {"type": "string", "format": "date-time", "readOnly": true}
+  },
+  "$defs": {
+    "address": {
+      "type": "object",
+      "description": "Value object — không có URI riêng.",
+      "additionalProperties": false,
+      "required": ["line1", "city", "country"],
+      "properties": {
+        "line1": {"type": "string", "minLength": 1, "maxLength": 200},
+        "ward": {"type": "string", "maxLength": 100},
+        "district": {"type": "string", "maxLength": 100},
+        "city": {"type": "string", "minLength": 1, "maxLength": 100},
+        "country": {"type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2"},
+        "geo": {
+          "type": "object",
+          "required": ["lat", "lng"],
+          "properties": {
+            "lat": {"type": "number", "minimum": -90, "maximum": 90},
+            "lng": {"type": "number", "minimum": -180, "maximum": 180}
+          }
+        }
+      }
+    },
+    "localTime": {"type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"},
+    "amenity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "name"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^[a-z_]+$"},
+        "name": {"type": "string"}
+      }
+    },
+    "money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amount", "currency"],
+      "properties": {
+        "amount": {"type": "integer", "minimum": 0, "description": "Đơn vị nhỏ nhất của tiền tệ (VND không có xu)."},
+        "currency": {"enum": ["VND", "USD"]}
+      }
+    }
+  }
+}
