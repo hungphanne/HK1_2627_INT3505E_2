@@ -1,0 +1,612 @@
+openapi: 3.1.0
+info:
+  title: Social Network API — Auth & Posts
+  version: 1.0.0
+  summary: Bài tập Buổi 6 — đặc tả 3 endpoint POST /auth/login, POST /auth/refresh, GET /posts/{id}.
+  description: |
+    Đặc tả trả lời ba câu hỏi cho từng endpoint: **cần scope nào**, **lỗi nào có thể xảy ra**,
+    **status code nào được trả**.
+
+    ## Quy ước chung
+    - Chỉ phục vụ qua HTTPS (HSTS bật ở tầng gateway). Không chấp nhận HTTP thuần.
+    - Access token: JWT (JWS, `HS256`/`RS256` theo allowlist cấu hình phía server — server **không** tin
+      `alg` trong header token), TTL 15 phút, có các claim `iss`, `aud`, `sub`, `exp`, `iat`, `jti`, `scope`.
+    - Refresh token: JWT `type=refresh`, TTL 30 ngày, **xoay vòng (rotation)** mỗi lần dùng; refresh token
+      đã dùng mà bị gửi lại → coi là bị đánh cắp, thu hồi cả "family" phiên.
+    - Gửi token qua header `Authorization: Bearer <token>`, **không** qua query string.
+    - Lỗi trả theo RFC 9457 (`application/problem+json`). Lỗi 401/403 do token kèm header
+      `WWW-Authenticate` theo RFC 6750 (`error="invalid_token"` / `error="insufficient_scope"`).
+    - Thứ tự kiểm tra: AuthN (token hợp lệ, chưa thu hồi) → AuthZ (scope) → quyền trên đối tượng (BOLA).
+
+    ## Bảng scope
+    | Endpoint | Security | Scope yêu cầu |
+    |---|---|---|
+    | `POST /auth/login` | công khai (`security: []`) | không — endpoint này **cấp** token kèm scope theo role |
+    | `POST /auth/refresh` | `refreshToken` | không cần scope; yêu cầu refresh token hợp lệ, chưa dùng, chưa thu hồi |
+    | `GET /posts/{id}` | `bearerAuth` | `posts:read` + kiểm tra quyền xem bài (visibility / owner / bạn bè / block) |
+
+    Scope được cấp theo role: `user` → `posts:read posts:write profile:read`;
+    `moderator` → thêm `posts:moderate`; `admin` → thêm `users:admin`.
+servers:
+  - url: https://api.social.example/v1
+    description: Production (chỉ HTTPS)
+  - url: https://staging.social.example/v1
+    description: Staging
+
+tags:
+  - name: Auth
+    description: Xác thực và cấp/làm mới token
+  - name: Posts
+    description: Bài viết
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Đăng nhập bằng email + mật khẩu, nhận access + refresh token
+      description: |
+        **Scope:** không yêu cầu (endpoint công khai). Token trả về mang scope theo role của user.
+
+        **Bảo vệ:**
+        - Mật khẩu so khớp bằng Argon2id; khi email không tồn tại vẫn chạy verify với hash giả
+          để thời gian phản hồi tương đương (chống dò tài khoản).
+        - Sai email **hoặc** sai mật khẩu đều trả cùng một lỗi `401 invalid_credentials`.
+        - Rate-limit theo IP và theo tài khoản; vượt ngưỡng → `429` + `Retry-After`
+          (không khóa cứng tài khoản để tránh bị lợi dụng gây từ chối dịch vụ).
+        - Không log body request (chứa mật khẩu).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: an@vnu.edu.vn
+              password: correct horse battery staple
+      responses:
+        '200':
+          description: Đăng nhập thành công.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+              example:
+                token_type: Bearer
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4MjQyMiJ9.sig
+                expires_in: 900
+                refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0eXBlIjoicmVmcmVzaCJ9.sig
+                refresh_expires_in: 2592000
+                scope: posts:read posts:write profile:read
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: |
+            Sai email hoặc mật khẩu (thông báo chung, không tiết lộ trường nào sai).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: https://api.social.example/problems/invalid-credentials
+                title: Invalid credentials
+                status: 401
+                code: invalid_credentials
+                detail: Email hoặc mật khẩu không đúng.
+        '403':
+          description: |
+            Thông tin đăng nhập đúng nhưng tài khoản không được phép đăng nhập
+            (bị đình chỉ hoặc chưa xác minh email). Chỉ trả sau khi mật khẩu đã đúng
+            để không làm lộ trạng thái tài khoản cho người không biết mật khẩu.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                suspended:
+                  value:
+                    type: https://api.social.example/problems/account-disabled
+                    title: Account disabled
+                    status: 403
+                    code: account_disabled
+                unverified:
+                  value:
+                    type: https://api.social.example/problems/email-not-verified
+                    title: Email not verified
+                    status: 403
+                    code: email_not_verified
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshToken
+      summary: Đổi refresh token lấy access token mới (refresh token được xoay vòng)
+      description: |
+        **Scope:** không yêu cầu scope. Yêu cầu refresh token (không phải access token) gửi qua
+        `Authorization: Bearer <refresh_token>`.
+
+        **Xử lý:**
+        1. Verify chữ ký với thuật toán trong allowlist, kiểm `exp`, `iss`, `aud`, `type=refresh`.
+        2. Tra `jti` trong kho phiên: phải còn hiệu lực, chưa dùng, chưa thu hồi.
+        3. Nạp lại role/scope **hiện tại** từ DB (không copy claim cũ từ refresh token) và kiểm
+           tài khoản còn hoạt động.
+        4. Đánh dấu refresh token cũ là đã dùng, cấp cặp token mới (rotation).
+        5. Nếu refresh token đã dùng bị gửi lại → thu hồi toàn bộ family phiên, trả `401 token_reused`.
+
+        Nếu kho phiên (Redis/DB) không truy cập được → trả `503` (fail-closed), không cấp token.
+      security:
+        - refreshToken: []
+      responses:
+        '200':
+          description: Cấp access token mới và refresh token mới; refresh token cũ hết hiệu lực.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          description: |
+            Refresh token thiếu, sai chữ ký, hết hạn, đã thu hồi, sai loại (gửi access token)
+            hoặc bị dùng lại. Client phải đăng nhập lại.
+          headers:
+            WWW-Authenticate:
+              $ref: '#/components/headers/WWWAuthenticateInvalidToken'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                missing:
+                  summary: Thiếu header Authorization
+                  value:
+                    type: https://api.social.example/problems/unauthorized
+                    title: Unauthorized
+                    status: 401
+                    code: missing_token
+                expired:
+                  summary: Refresh token hết hạn
+                  value:
+                    type: https://api.social.example/problems/invalid-token
+                    title: Invalid token
+                    status: 401
+                    code: token_expired
+                revoked:
+                  summary: Đã logout / bị thu hồi
+                  value:
+                    type: https://api.social.example/problems/invalid-token
+                    title: Invalid token
+                    status: 401
+                    code: token_revoked
+                wrong_type:
+                  summary: Gửi access token thay vì refresh token
+                  value:
+                    type: https://api.social.example/problems/invalid-token
+                    title: Invalid token
+                    status: 401
+                    code: wrong_token_type
+                reused:
+                  summary: Refresh token đã dùng bị gửi lại — cả phiên bị thu hồi
+                  value:
+                    type: https://api.social.example/problems/invalid-token
+                    title: Invalid token
+                    status: 401
+                    code: token_reused
+        '403':
+          description: Token hợp lệ nhưng tài khoản đã bị đình chỉ kể từ lần đăng nhập.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: https://api.social.example/problems/account-disabled
+                title: Account disabled
+                status: 403
+                code: account_disabled
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /posts/{id}:
+    get:
+      tags: [Posts]
+      operationId: getPost
+      summary: Lấy một bài viết theo id
+      description: |
+        **Scope:** `posts:read`.
+
+        **Kiểm tra quyền trên đối tượng (chống BOLA — OWASP API1:2023):** người gọi chỉ xem được bài khi
+        - `visibility = public`, hoặc
+        - người gọi là tác giả, hoặc
+        - `visibility = friends` và người gọi là bạn của tác giả, hoặc
+        - người gọi có scope `posts:moderate`;
+
+        và **không** bị tác giả chặn (block), bài chưa bị xóa.
+        Khi không đủ quyền xem, trả **404** (giống bài không tồn tại) để không lộ sự tồn tại của bài riêng tư.
+        **403** chỉ dùng khi token thiếu scope `posts:read`.
+
+        Response chỉ chứa các trường trong schema `Post` (DTO), không trả nguyên bản ghi DB
+        (không có email tác giả, IP, cờ nội bộ — OWASP API3:2023).
+      security:
+        - bearerAuth: [posts:read]
+      x-required-scopes: [posts:read]
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        '200':
+          description: Bài viết người gọi được phép xem.
+          headers:
+            Cache-Control:
+              description: Bài có thể không công khai nên chỉ cache phía client.
+              schema:
+                type: string
+                examples: ["private, max-age=0, must-revalidate"]
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          description: '`id` sai định dạng (không phải ULID hợp lệ).'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: https://api.social.example/problems/validation-error
+                title: Validation error
+                status: 400
+                code: invalid_id
+                errors:
+                  - field: id
+                    message: must be a 26-character ULID
+        '401':
+          $ref: '#/components/responses/InvalidAccessToken'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '404':
+          description: Bài không tồn tại, đã xóa, hoặc người gọi không có quyền xem (cố ý gộp chung).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: https://api.social.example/problems/not-found
+                title: Not found
+                status: 404
+                code: post_not_found
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Access token JWT (TTL 15 phút). Claim `scope` là chuỗi các scope cách nhau bởi dấu cách.
+        OpenAPI 3.1 cho phép liệt kê scope/role trong security requirement của scheme không phải OAuth2;
+        server kiểm thêm `type=access`, `iss`, `aud`, `exp` và blocklist `jti`.
+    refreshToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Refresh token JWT (`type=refresh`, TTL 30 ngày, một lần dùng, xoay vòng).
+
+  parameters:
+    PostId:
+      name: id
+      in: path
+      required: true
+      description: ID bài viết dạng ULID (không tuần tự, khó đoán).
+      schema:
+        type: string
+        pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+        examples: ["01JB7Q4Z8X3K2M9N5P6R7S8T9V"]
+
+  headers:
+    NoStore:
+      description: Không cache response chứa token (RFC 6749 §5.1).
+      schema:
+        type: string
+        const: no-store
+    WWWAuthenticateInvalidToken:
+      description: RFC 6750 challenge.
+      schema:
+        type: string
+        examples: ["Bearer realm=\"social\", error=\"invalid_token\", error_description=\"The token is expired\""]
+    WWWAuthenticateInsufficientScope:
+      schema:
+        type: string
+        examples: ["Bearer realm=\"social\", error=\"insufficient_scope\", scope=\"posts:read\""]
+    RetryAfter:
+      description: Số giây cần chờ trước khi thử lại.
+      schema:
+        type: integer
+        examples: [60]
+    RateLimit:
+      description: Trạng thái hạn mức (draft IETF RateLimit header).
+      schema:
+        type: string
+        examples: ["limit=5, remaining=0, reset=60"]
+
+  responses:
+    ValidationError:
+      description: Body sai định dạng hoặc thiếu trường bắt buộc.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.social.example/problems/validation-error
+            title: Validation error
+            status: 400
+            code: validation_error
+            errors:
+              - field: email
+                message: must be a valid email address
+    UnsupportedMediaType:
+      description: Content-Type không phải `application/json`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.social.example/problems/unsupported-media-type
+            title: Unsupported media type
+            status: 415
+            code: unsupported_media_type
+    InvalidAccessToken:
+      description: Thiếu access token, sai chữ ký, hết hạn, sai `iss`/`aud`, đã thu hồi, hoặc gửi refresh token.
+      headers:
+        WWW-Authenticate:
+          $ref: '#/components/headers/WWWAuthenticateInvalidToken'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            missing:
+              value:
+                type: https://api.social.example/problems/unauthorized
+                title: Unauthorized
+                status: 401
+                code: missing_token
+            expired:
+              value:
+                type: https://api.social.example/problems/invalid-token
+                title: Invalid token
+                status: 401
+                code: token_expired
+            invalid:
+              value:
+                type: https://api.social.example/problems/invalid-token
+                title: Invalid token
+                status: 401
+                code: invalid_token
+    InsufficientScope:
+      description: Token hợp lệ nhưng thiếu scope yêu cầu.
+      headers:
+        WWW-Authenticate:
+          $ref: '#/components/headers/WWWAuthenticateInsufficientScope'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.social.example/problems/insufficient-scope
+            title: Insufficient scope
+            status: 403
+            code: insufficient_scope
+            required_scopes: [posts:read]
+    TooManyRequests:
+      description: Vượt hạn mức request (rate-limit theo IP / tài khoản / token).
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+        RateLimit:
+          $ref: '#/components/headers/RateLimit'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.social.example/problems/rate-limited
+            title: Too many requests
+            status: 429
+            code: rate_limited
+    ServiceUnavailable:
+      description: Kho phiên/blocklist không truy cập được; từ chối thay vì bỏ qua kiểm tra (fail-closed).
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.social.example/problems/unavailable
+            title: Service unavailable
+            status: 503
+            code: session_store_unavailable
+    InternalError:
+      description: Lỗi máy chủ. Không trả stack trace hay chi tiết nội bộ; chỉ trả `trace_id` để tra log.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.social.example/problems/internal
+            title: Internal server error
+            status: 500
+            code: internal_error
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+
+  schemas:
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+          maxLength: 128
+          description: Giới hạn độ dài để tránh tốn tài nguyên khi hash.
+
+    TokenPair:
+      type: object
+      additionalProperties: false
+      required: [token_type, access_token, expires_in, refresh_token, refresh_expires_in, scope]
+      properties:
+        token_type:
+          type: string
+          const: Bearer
+        access_token:
+          type: string
+          description: JWT, TTL 15 phút.
+        expires_in:
+          type: integer
+          description: Số giây đến khi access token hết hạn.
+          examples: [900]
+        refresh_token:
+          type: string
+          description: JWT `type=refresh`, một lần dùng.
+        refresh_expires_in:
+          type: integer
+          examples: [2592000]
+        scope:
+          type: string
+          description: Các scope được cấp, cách nhau bởi dấu cách.
+          examples: ["posts:read posts:write profile:read"]
+
+    AccessTokenClaims:
+      description: Tham khảo — payload của access token (đọc được nên không chứa PII/secret).
+      type: object
+      required: [iss, aud, sub, exp, iat, jti, type, scope]
+      properties:
+        iss: { type: string, examples: ["https://auth.social.example"]}
+        aud: { type: string, examples: ["social-api"]}
+        sub: { type: string, description: ID người dùng (không phải email), examples: ["01JB7PZ3W0F4G5H6J7K8M9N0P1"]}
+        exp: { type: integer }
+        iat: { type: integer }
+        jti: { type: string, format: uuid }
+        type: { type: string, enum: [access, refresh] }
+        scope: { type: string, examples: ["posts:read posts:write profile:read"]}
+
+    AuthorSummary:
+      type: object
+      additionalProperties: false
+      required: [id, username, display_name]
+      properties:
+        id: { type: string }
+        username: { type: string }
+        display_name: { type: string }
+        avatar_url: { type: [string, 'null'], format: uri }
+
+    Post:
+      type: object
+      additionalProperties: false
+      required: [id, author, content, visibility, created_at, like_count, comment_count]
+      properties:
+        id:
+          type: string
+          examples: ["01JB7Q4Z8X3K2M9N5P6R7S8T9V"]
+        author:
+          $ref: '#/components/schemas/AuthorSummary'
+        content:
+          type: string
+          maxLength: 5000
+        media:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [url, type]
+            properties:
+              url: { type: string, format: uri }
+              type: { type: string, enum: [image, video] }
+        visibility:
+          type: string
+          enum: [public, friends, private]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: [string, 'null']
+          format: date-time
+        like_count:
+          type: integer
+          minimum: 0
+        comment_count:
+          type: integer
+          minimum: 0
+        viewer_has_liked:
+          type: boolean
+
+    Problem:
+      description: RFC 9457 Problem Details.
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        code:
+          type: string
+          description: Mã lỗi ổn định cho client xử lý.
+          enum:
+            - validation_error
+            - invalid_id
+            - unsupported_media_type
+            - invalid_credentials
+            - account_disabled
+            - email_not_verified
+            - missing_token
+            - invalid_token
+            - token_expired
+            - token_revoked
+            - token_reused
+            - wrong_token_type
+            - insufficient_scope
+            - post_not_found
+            - rate_limited
+            - session_store_unavailable
+            - internal_error
+        detail: { type: string }
+        trace_id: { type: string }
+        required_scopes:
+          type: array
+          items: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
