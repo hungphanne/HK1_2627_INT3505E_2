@@ -1,0 +1,2 @@
+connexion[flask,swagger-ui,uvicorn]>=3.0
+flask-sqlalchemy>=3.1

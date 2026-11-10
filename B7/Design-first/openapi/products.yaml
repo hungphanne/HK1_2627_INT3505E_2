@@ -1,0 +1,65 @@
+# OpenAPI 3.0 — hợp đồng viết TRƯỚC, connexion đọc file này để tạo route + validate
+openapi: 3.0.3
+info:
+  title: Product API (design-first)
+  version: 1.0.0
+paths:
+  /products:
+    get:
+      operationId: api.products.list_products
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Product" }
+    post:
+      operationId: api.products.create_product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProductIn" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "400":
+          description: Validation error
+        "409":
+          description: SKU already exists
+  /products/{id}:
+    get:
+      operationId: api.products.get_product
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "404":
+          description: Not Found
+components:
+  schemas:
+    ProductIn:
+      type: object
+      additionalProperties: false
+      required: [sku, name, price_cents]
+      properties:
+        sku: { type: string, minLength: 3, maxLength: 32 }
+        name: { type: string, minLength: 1, maxLength: 255 }
+        price_cents: { type: integer, minimum: 0 }
+    Product:
+      type: object
+      required: [id, sku, name, price_cents]
+      properties:
+        id: { type: integer }
+        sku: { type: string }
+        name: { type: string }
+        price_cents: { type: integer }
