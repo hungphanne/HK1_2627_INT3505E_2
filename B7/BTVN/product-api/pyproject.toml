@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "product-api"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "flask>=3.0",
+  "flask-sqlalchemy>=3.1",
+  "flask-migrate>=4.0",
+  "marshmallow>=3.20",
+  "psycopg[binary]>=3.1",
+  "gunicorn>=22",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
+testpaths = ["tests"]
