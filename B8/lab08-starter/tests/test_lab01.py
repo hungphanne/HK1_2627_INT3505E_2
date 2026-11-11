@@ -87,3 +87,21 @@ def test_deleted_book_is_no_longer_found(client):
     response = client.get(f"/books/{book_id}")
     assert response.status_code == 404
     assert response.get_json()["code"] == "NOT_FOUND"
+
+# ---------------------------------------------------------------- BONUS
+def test_response_extra_field_blocked(client, sample_book):
+    schema = to_json_schema(get_book_schema())
+    response = client.get(f"/books/{sample_book}")
+    assert response.status_code == 200
+    book = response.get_json()
+
+    # The real response must match the contract (no extra fields leaked).
+    validate(instance=book, schema=schema)
+
+    # Simulate a backend that leaks a sensitive field.
+    leaked = copy.deepcopy(book)
+    leaked["password_hash"] = "$2b$12$fakehashfakehashfakehash"
+    with pytest.raises(ValidationError) as exc_info:
+        validate(instance=leaked, schema=schema)
+    assert "password_hash" in exc_info.value.message
+    assert "password_hash" not in book    # original response untouched
