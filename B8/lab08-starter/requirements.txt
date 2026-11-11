@@ -1,0 +1,8 @@
+Flask>=3.0,<4
+Flask-SQLAlchemy>=3.1,<4
+SQLAlchemy>=2.0,<3
+marshmallow>=3.21,<5
+pytest>=8,<10
+jsonschema>=4.21,<5
+PyYAML>=6,<7
+locust>=2.24,<3

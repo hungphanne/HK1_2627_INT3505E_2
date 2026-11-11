@@ -1,0 +1,149 @@
+openapi: 3.0.3
+info:
+  title: Books API — Lab 08
+  version: 1.0.0
+  description: |
+    Educational API. LAB 2: three *intentional* contract defects remain.
+    The application is the reference for intended behavior.
+servers:
+  - url: http://localhost:5000
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string}
+  /books:
+    get:
+      # LAB 2 intentional issue 1: operationId is missing.
+      parameters:
+        - in: query
+          name: author
+          schema: {type: string}
+        - in: query
+          name: year
+          schema: {type: integer}
+        - in: query
+          name: page
+          schema: {type: integer, minimum: 1}
+      responses:
+        '200':
+          description: List books
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Book'}
+    post:
+      operationId: createBook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BookInput'}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Book'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /books/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: {type: integer, minimum: 1}
+    get:
+      operationId: getBook
+      responses:
+        '200':
+          description: Book found
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Book'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      operationId: updateBook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BookInput'}
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Book'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      operationId: deleteBook
+      responses:
+        '204':
+          description: Deleted (response has no body)
+          # LAB 2 intentional issue 2: 204 incorrectly declares a body.
+          content:
+            application/json:
+              schema: {type: object}
+        '404': {$ref: '#/components/responses/NotFound'}
+components:
+  schemas:
+    Book:
+      type: object
+      additionalProperties: false
+      required: [id, title, author, year, isbn]
+      properties:
+        id: {type: integer, minimum: 1}
+        title: {type: string, minLength: 1, maxLength: 200}
+        author: {type: string, minLength: 1, maxLength: 200}
+        # LAB 2 intentional issue 3: actual Book.year is integer/null.
+        year: {type: string, nullable: true}
+        isbn: {type: string, pattern: '^\d{13}$', nullable: true}
+    BookInput:
+      type: object
+      additionalProperties: false
+      required: [title, author]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 200}
+        author: {type: string, minLength: 1, maxLength: 200}
+        year: {type: integer, nullable: true, minimum: 1450, maximum: 2100}
+        isbn: {type: string, pattern: '^\d{13}$', nullable: true}
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: {type: string}
+        message: {type: string}
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field: {type: string}
+              message: {type: string}
+  responses:
+    NotFound:
+      description: Missing book
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Conflict:
+      description: Duplicate ISBN
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
