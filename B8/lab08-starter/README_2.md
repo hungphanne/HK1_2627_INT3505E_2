@@ -17,3 +17,10 @@ All 3 errors in slide reported
 
 ![](images/image-3.png)
 No error catched after openapi.yaml fixed
+
+## Newman added error cases - result
+
+![](images/image-4.png)
+![](images/image-5.png)
+
+No scripts failed
