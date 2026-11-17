@@ -1,4 +1,7 @@
-"""Lab 4 starter: weighted tasks, optional 404, no deliberate server errors.
+"""Lab 4: weighted tasks, optional 404, no deliberate server errors.
+
+search_by_year có 1% failure giả lập phía client (Locust response.failure()),
+KHÔNG phải HTTP 500 do server phát.
 
 Run: locust -f performance/locustfile.py --headless -H http://127.0.0.1:5000 \
          -u 10 -r 2 -t 30s --html reports/A.html
@@ -9,6 +12,7 @@ import random
 from locust import HttpUser, between, task
 
 _counter = itertools.count(1)
+SIMULATED_FAILURE_RATE = 0.01  # 1% — giả lập ở phía Locust, không phải lỗi server
 
 
 class BooksUser(HttpUser):
@@ -39,5 +43,25 @@ class BooksUser(HttpUser):
             name="POST /books",
         )
 
-    # LAB 4: add search_by_year() and explain any injected failures.
-    # A client-side artificial failure is not a real HTTP 500 from the server.
+    # LAB 4: search_by_year với 1% failure giả lập.
+    #
+    # Failure này là CLIENT-SIDE: Locust gọi response.failure() trên một response
+    # mà server thực ra đã trả 200. Server KHÔNG phát HTTP 500 nào.
+    # Trong report, các failure này có message bắt đầu bằng "SIMULATED"; còn lỗi
+    # thật từ server (5xx, timeout, connection error) giữ nguyên status code
+    # → đọc bảng Failures trong report HTML để phân biệt hai loại.
+    @task(2)
+    def search_by_year(self):
+        year = random.randint(1990, 2025)
+        with self.client.get(
+            f"/books?year={year}", name="GET /books?year=[year]", catch_response=True
+        ) as response:
+            if response.status_code != 200:
+                # Lỗi thật từ server (hoặc mạng) — không phải lỗi giả lập.
+                response.failure(f"Unexpected status {response.status_code}")
+            elif random.random() < SIMULATED_FAILURE_RATE:
+                response.failure(
+                    "SIMULATED 500 (client-side response.failure, server returned 200)"
+                )
+            else:
+                response.success()
