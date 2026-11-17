@@ -35,3 +35,33 @@ rules:
       function: enumeration
       functionOptions:
         values: [integer]
+
+
+  # Custom rule bắt buộc — schema của response 200 phải có > 0 trường
+  # Bắt case: response khai báo `type: object` rỗng (hoặc array of object rỗng)
+  # → spec "hợp lệ" nhưng không mô tả gì, client & test không có gì để kiểm.
+  response-200-has-properties:
+    description: Schema của response 200 (application/json) phải có ít nhất 1 property.
+    message: "Response 200 phải khai báo ít nhất 1 trường trong schema"
+    severity: error
+    given: "$.paths[*][*].responses['200'].content['application/json'].schema"
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          anyOf:
+            # object: phải có properties với ≥ 1 key
+            - required: [properties]
+              properties:
+                properties:
+                  type: object
+                  minProperties: 1
+            # array: items phải là object có ≥ 1 property
+            - required: [items]
+              properties:
+                items:
+                  required: [properties]
+                  properties:
+                    properties:
+                      type: object
+                      minProperties: 1
