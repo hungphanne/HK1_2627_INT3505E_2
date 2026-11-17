@@ -9,4 +9,8 @@
 ## spectral with default rules for openapi.yaml
 
 ![](images/image-2.png)
-No errors, only warnings
+No errors, only warnings, 1st error in slide reported as warning
+
+## spectral added 3 rules for openapi.yaml
+![](images/spectral-3-errors)
+All 3 errors in slide reported

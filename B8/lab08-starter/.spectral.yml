@@ -1,1 +1,37 @@
 extends: ["spectral:oas"]
+
+rules:
+  # Tắt các rule mặc định của spectral:oas mà không muốn dùng
+  info-contact: off
+  operation-description: off
+  operation-tags: off
+
+
+  # Lỗi 1 — mọi operation phải có operationId (quy ước thiết kế chung)
+  # spectral:oas đã có rule operation-operationId nhưng chỉ ở mức warn → nâng lên error
+  # để thiếu operationId làm fail CI thay vì chỉ cảnh báo.
+  operation-operationId: error
+
+  # Lỗi 2 — response 204 No Content không được khai báo body (theo chuẩn HTTP,
+  # áp dụng cho mọi endpoint, không riêng DELETE /books/{id})
+  no-body-on-204:
+    description: Response 204 theo HTTP không có body, nên không được khai báo content.
+    message: "Response 204 không được có content (body)"
+    severity: error
+    given: "$.paths[*][*].responses['204']"
+    then:
+      field: content
+      function: falsy
+
+  # Lỗi 3 — mọi trường year (ở bất kỳ schema nào) phải là integer
+  # Quy ước dữ liệu chung, không viết riêng cho Book.
+  year-must-be-integer:
+    description: Trường năm (year) trong mọi schema phải là integer.
+    message: "{{path}} phải có type: integer"
+    severity: error
+    given: "$..properties.year"
+    then:
+      field: type
+      function: enumeration
+      functionOptions:
+        values: [integer]
