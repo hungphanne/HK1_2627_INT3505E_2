@@ -14,3 +14,6 @@ No errors, only warnings, 1st error in slide reported as warning
 ## spectral added 3 rules for openapi.yaml
 ![](images/spectral-3-errors.png)
 All 3 errors in slide reported
+
+![](images/image-3.png)
+No error catched after openapi.yaml fixed
