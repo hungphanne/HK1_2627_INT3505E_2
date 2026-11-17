@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Books API — Lab08 Starter",
-    "description": "Lab 3: add error-cases/ folder with POST missing title and GET missing id. Collection currently contains happy paths only.",
+    "description": "Lab 3 — 5 happy paths (books/) + 2 error paths (error-cases/). book_id được lưu từ POST qua collectionVariable và dùng cho GET/PUT/DELETE.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -175,6 +175,90 @@
                 "exec": [
                   "pm.test(\"204 No Content\", () => pm.response.to.have.status(204));",
                   "pm.test(\"empty body\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "error-cases",
+      "description": "Error paths: API phải trả 4xx có nghĩa (không phải 500) kèm body JSON mô tả lỗi.",
+      "item": [
+        {
+          "name": "POST /books — missing title (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/books",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "books"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"author\": \"Kleppmann\", \"year\": 2017}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"body is JSON\", () => pm.response.to.be.json);",
+                  "pm.test(\"errors contains field 'title'\", () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.errors, \"body.errors\").to.be.an(\"array\").that.is.not.empty;",
+                  "  const fields = body.errors.map(e => e.field);",
+                  "  pm.expect(fields).to.include(\"title\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /books/9999 — not found (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/books/9999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "books",
+                "9999"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 Not Found\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"body is JSON\", () => pm.response.to.be.json);",
+                  "pm.test(\"code is NOT_FOUND\", () => pm.expect(pm.response.json().code).to.eql(\"NOT_FOUND\"));"
                 ]
               }
             }
